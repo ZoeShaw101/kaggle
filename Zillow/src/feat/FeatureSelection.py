@@ -7,7 +7,7 @@ class FeatureSelection:
         ## drop certain columns, useless and the nearly null ones
         l_drop_columns = ['propertyzoningdesc','propertycountylandusecode','basementsqft','buildingclasstypeid',
                           'finishedsquarefeet13','storytypeid','assessmentyear','censustractandblock','typeconstructiontypeid',
-                          'yardbuildingsqft26','fireplaceflag']
+                          'yardbuildingsqft26','fireplaceflag', 'fips']  ## fips is dumplicated, as it's contained in rawcensustractandblock
         df_train.drop(l_drop_columns, axis= 1, inplace = True)
         df_valid.drop(l_drop_columns, axis= 1, inplace= True)
         df_test.drop(l_drop_columns, axis= 1, inplace= True)

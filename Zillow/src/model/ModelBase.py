@@ -29,7 +29,7 @@ class ModelBase(object):
     _l_selected_features = []
 
     ## outliers
-    _low = -0.4
+    _low = -0.400
     _up = 0.418
 
     def __init__(self,InputDir,OutputDir):

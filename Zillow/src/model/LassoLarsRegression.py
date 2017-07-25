@@ -1,5 +1,5 @@
 from model.ModelBase import ModelBase
-from sklearn.linear_model import Lasso
+from sklearn.linear_model import LassoLars
 import pandas as pd
 import numpy as np
 import dill as pickle
@@ -8,12 +8,11 @@ from datetime import datetime
 from model.GBREncoding import GBRE
 import gc
 
-class LR(ModelBase):
+class LLR(ModelBase):
     """"""
     _l_drop_cols = ['logerror', 'parcelid', 'transactiondate', 'index', 'nullcount']
     _lr_alpha = 0.001
     _lr_iter = 200
-    _lr_sel = 'random'
 
     #_encode = GBRE()
     #
@@ -125,18 +124,17 @@ class LR(ModelBase):
         TrainData = self.TrainData[(self.TrainData['logerror'] > self._low) & (self.TrainData['logerror'] < self._up)]
         print('size after truncated outliers is %d ' % len(self.TrainData))
 
-        #extra_tr = pd.read_hdf(path_or_buf='%s/p21/eval_train.hdf' % self.InputDir, key='train')
-        #TrainData = pd.concat([self.TrainData, extra_tr.drop('parcelid', axis= 1)], axis = 1)
-
         TrainData['longitude'] -= -118600000
         TrainData['latitude'] -= 34220000
+        #extra_tr = pd.read_hdf(path_or_buf='%s/p21/eval_train.hdf' % self.InputDir, key='train')
+        #self.TrainData = pd.concat([self.TrainData, extra_tr.drop('parcelid', axis= 1)], axis = 1)
 
-        X = TrainData.drop(self._l_drop_cols, axis=1)
-        Y = TrainData['logerror']
+        X = self.TrainData.drop(self._l_drop_cols, axis=1)
+        Y = self.TrainData['logerror']
         self._l_train_columns = X.columns
         X = X.values.astype(np.float32, copy=False)
 
-        lr = Lasso(alpha= self._lr_alpha, max_iter= self._lr_iter, tol= 1e-4, random_state= 2017, selection= self._lr_sel)
+        lr = LassoLars(alpha= self._lr_alpha, max_iter= self._lr_iter, verbose= True)
         self._model = lr.fit(X, Y)
         end = time.time()
 
@@ -144,9 +142,9 @@ class LR(ModelBase):
 
         self._f_eval_train_model = '{0}/{1}_{2}.pkl'.format(self.OutputDir, self.__class__.__name__,
                                                             datetime.now().strftime('%Y%m%d-%H:%M:%S'))
-        with open(self._f_eval_train_model, 'wb') as o_file:
-           pickle.dump(self._model, o_file, -1)
-        o_file.close()
+        #with open(self._f_eval_train_model, 'wb') as o_file:
+        #    pickle.dump(self._model, o_file, -1)
+        #o_file.close()
 
         #self.TrainData = pd.concat([self.TrainData, self.ValidData[self.TrainData.columns]],
         #                           ignore_index=True)  ## ignore_index will reset the index or index will be overlaped
@@ -155,17 +153,12 @@ class LR(ModelBase):
 
     def evaluate(self):
         """"""
-        ValidData = self.ValidData
-
-        ValidData['longitude'] -= -118600000
-        ValidData['latitude'] -= 34220000
-
         ## not truncate outliers
-        pred_valid = pd.DataFrame(index= ValidData.index)
-        pred_valid['parcelid'] =  ValidData['parcelid']
+        pred_valid = pd.DataFrame(index=self.ValidData.index)
+        pred_valid['parcelid'] = self.ValidData['parcelid']
 
-        truth_valid = pd.DataFrame(index= ValidData.index)
-        truth_valid['parcelid'] = ValidData['parcelid']
+        truth_valid = pd.DataFrame(index=self.ValidData.index)
+        truth_valid['parcelid'] = self.ValidData['parcelid']
 
         start = time.time()
 
@@ -173,8 +166,9 @@ class LR(ModelBase):
             l_valid_columns = ['%s%s' % (c, d) if (c in ['lastgap', 'monthyear', 'buildingage']) else c for c in
                                self._l_train_columns]
 
-            #extra_va = pd.read_hdf(path_or_buf='%s/p21/eval_valid_%s.hdf' % (self.InputDir, d), key='valid')
-            #ValidData = pd.concat([self.ValidData, extra_va.drop('parcelid', axis= 1)], axis= 1)
+            extra_va = pd.read_hdf(path_or_buf='%s/p21/eval_valid_%s.hdf' % (self.InputDir, d), key='valid')
+            #ValidData = self.ValidData.join(extra_va, on= 'parcelid', how= 'left')
+            ValidData = pd.concat([self.ValidData, extra_va.drop('parcelid', axis= 1)], axis= 1)
 
             x_valid = ValidData[l_valid_columns]
             x_valid = x_valid.values.astype(np.float32, copy=False)

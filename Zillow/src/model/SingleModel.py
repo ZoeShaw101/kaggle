@@ -10,6 +10,8 @@ from model.SVR import SVR_
 from model.GBREncoding import GBRE
 from model.RidgeRegression import RR
 from model.Keras import KR
+from model.LassoLarsRegression import LLR
+from model.FactorMachine import FM
 
 class SingleModel:
 
@@ -26,19 +28,21 @@ class SingleModel:
                    'svr': SVR_,
                    'gbre': GBRE,
                    'rr': RR,
-                   'kr': KR
+                   'kr': KR,
+                   'llr': LLR,
+                   'fm': FM
                    }
 
         start = time.time()
 
         model = d_model[task](InputDir,OutputDir)
 
-        print('Training %s begins ...' % task)
-        model.train()
-        print('Evaluation %s begins ...' % task)
-        model.evaluate()
-        #print('Summit %s begins ...' % task)
-        #model.submit()
+        #print('Training %s begins ...' % task)
+        #model.train()
+        #print('Evaluation %s begins ...' % task)
+        #model.evaluate()
+        print('Summit %s begins ...' % task)
+        model.submit()
 
         end = time.time()
         print('%s done, time elapsed %ds' % (task,(end - start)))

@@ -23,8 +23,9 @@ class FeatureEncoding:
         df_train, df_valid, df_test = data
 
         CategoryCols = ['hashottuborspa','taxdelinquencyflag','airconditioningtypeid','architecturalstyletypeid',
-                        'buildingqualitytypeid','decktypeid','fips','heatingorsystemtypeid','pooltypeid10','pooltypeid2','pooltypeid7',
-                        'propertylandusetypeid','rawcensustractandblock','regionidcity','regionidcounty','regionidneighborhood','regionidzip']
+                        'buildingqualitytypeid','decktypeid','heatingorsystemtypeid','pooltypeid10','pooltypeid2','pooltypeid7',
+                        'propertylandusetypeid','regionidcity','regionidcounty','regionidneighborhood',
+                        'regionidzip', 'fipscode', 'tractcode', 'blockcode']
 
         for cc in CategoryCols:
 

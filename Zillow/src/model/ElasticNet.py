@@ -11,8 +11,7 @@ import gc
 
 class EN(ModelBase):
 
-   _l_drop_cols = ['logerror', 'parcelid', 'transactiondate', 'index','nullcount']
-   #_l_drop_cols = ['logerror', 'parcelid', 'transactiondate','index','nullcount', 'taxdelinquencyyear', 'finishedsquarefeet15', 'finishedsquarefeet6', 'yardbuildingsqft17']
+   _l_drop_cols = ['logerror', 'parcelid', 'transactiondate', 'index']
    _alpha = 0.001
    _ratio = 0.1
    _iter = 1000
@@ -21,17 +20,38 @@ class EN(ModelBase):
    """"""
    def train(self):
       """"""
+      ## drop noisy columns
+      print(self.TrainData.shape)
+
+      N = len(self.TrainData)
+
+      l_drop_select = {'tractcode': .99990,
+                       'regionidzip': .9995,
+                       'regionidneighborhood': .9995,
+                       'regionidcity': .9995,
+                       'propertylandusetypeid': .999,
+                       'heatingorsystemtypeid': .999,
+                       'buildingqualitytypeid': .999,
+                       'architecturalstyletypeid': .999,
+                       'airconditioningtypeid': .999,
+                       'blockcode': .999
+                       }
+      for sel in l_drop_select:
+         Cols = [col for col in self.TrainData.columns if (sel in col)]
+         selected = [col for col in Cols if (self.TrainData[col].value_counts().ix[0] > N * l_drop_select[sel])]
+         print('%s has %d' % (sel, len(Cols)))
+         print('%s was truncted %d' % (sel, len(selected)))
+         self.TrainData.drop(selected, axis=1, inplace=True)
+
       start = time.time()
 
       print('size before truncated outliers is %d ' % len(self.TrainData))
       TrainData = self.TrainData[(self.TrainData['logerror'] > self._low) & (self.TrainData['logerror'] < self._up)]
       print('size after truncated outliers is %d ' % len(TrainData))
-      #TrainData['bathroomratio'] = TrainData['bathroomcnt'] / TrainData['calculatedbathnbr']
-      #TrainData.loc[TrainData['bathroomratio'] < 0, 'bathroomratio'] = -1
+
       TrainData['longitude'] -= -118600000
       TrainData['latitude'] -= 34220000
 
-      #
       # TrainData['structuretaxvalueratio'] = TrainData['structuretaxvaluedollarcnt'] / TrainData['taxvaluedollarcnt']
       # TrainData['landtaxvalueratio'] = TrainData['landtaxvaluedollarcnt'] / TrainData['taxvaluedollarcnt']
       # TrainData.loc[TrainData['structuretaxvalueratio'] < 0, 'structuretaxvalueratio'] = -1
@@ -105,8 +125,6 @@ class EN(ModelBase):
       """"""
       ValidData = self.ValidData
 
-      #ValidData['bathroomratio'] = ValidData['bathroomcnt'] / ValidData['calculatedbathnbr']
-      #ValidData.loc[ValidData['bathroomratio'] < 0, 'bathroomratio'] = -1
       ValidData['longitude'] -= -118600000
       ValidData['latitude'] -= 34220000
 
@@ -129,7 +147,7 @@ class EN(ModelBase):
                             self._l_train_columns]
          x_valid = ValidData[l_valid_columns]
          x_valid = x_valid.values.astype(np.float32, copy=False)
-         pred_valid[d] = self._model.predict(x_valid)# * 0.80 + 0.011 * 0.20
+         pred_valid[d] = self._model.predict(x_valid)
          df_tmp = ValidData[ValidData['transactiondate'].dt.month == int(d[-2:])]
          truth_valid.loc[df_tmp.index, d] = df_tmp['logerror']
 

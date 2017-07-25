@@ -12,28 +12,43 @@ import gc
 import os
 
 class GBR(ModelBase):
+    """"""
+    _l_drop_cols = ['logerror', 'parcelid', 'transactiondate','index']
 
-    _l_drop_cols = ['logerror', 'parcelid', 'transactiondate','index','nullcount']
-    #_l_drop_cols = ['logerror', 'parcelid', 'transactiondate','index','nullcount', 'taxdelinquencyyear', 'finishedsquarefeet15', 'finishedsquarefeet6', 'yardbuildingsqft17']
-
-    _iter = 80
+    _iter = 120
     _learning_rate = 0.4
-    _depth= 6
+    _depth= 5
     _loss = 'lad'
 
-    """"""
     def train(self):
         """"""
+        ## drop noisy columns
+        print(self.TrainData.shape)
+
+        N = len(self.TrainData)
+
+        l_drop_select = {'tractcode': .99990,
+                         'regionidzip': .9995,
+                         'regionidneighborhood': .9995,
+                         'regionidcity': .9995,
+                         'propertylandusetypeid': .999,
+                         'heatingorsystemtypeid': .999,
+                         'buildingqualitytypeid': .999,
+                         'architecturalstyletypeid': .999,
+                         'airconditioningtypeid': .999,
+                         'blockcode': .999
+                         }
+        for sel in l_drop_select:
+            Cols = [col for col in self.TrainData.columns if (sel in col)]
+            selected = [col for col in Cols if (self.TrainData[col].value_counts().ix[0] > N * l_drop_select[sel])]
+            print('%s has %d' % (sel, len(Cols)))
+            print('%s was truncted %d' % (sel, len(selected)))
+            self.TrainData.drop(selected, axis= 1, inplace= True)
+
         print('size before truncated outliers is %d ' % len(self.TrainData))
         TrainData = self.TrainData[(self.TrainData['logerror'] > self._low) & (self.TrainData['logerror'] < self._up)]
         print('size after truncated outliers is %d ' % len(TrainData))
-        #TrainData['bathroomratio'] = TrainData['bathroomcnt'] / TrainData['calculatedbathnbr']
-        #TrainData.loc[TrainData['bathroomratio'] < 0, 'bathroomratio'] = -1
-        #
-        # TrainData['structuretaxvalueratio'] = TrainData['structuretaxvaluedollarcnt'] / TrainData['taxvaluedollarcnt']
-        # TrainData['landtaxvalueratio'] = TrainData['landtaxvaluedollarcnt'] / TrainData['taxvaluedollarcnt']
-        # TrainData.loc[TrainData['structuretaxvalueratio'] < 0, 'structuretaxvalueratio'] = -1
-        # TrainData.loc[TrainData['landtaxvalueratio'] < 0, 'landtaxvalueratio'] = -1
+
         TrainData['longitude'] -= -118600000
         TrainData['latitude'] -= 34220000
 
@@ -83,9 +98,9 @@ class GBR(ModelBase):
                                   learning_rate= self._learning_rate,
                                   max_depth = self._depth,
                                   random_state = 2017,
-                                  subsample= 0.8,
+                                  subsample= 0.80,
                                   loss = self._loss,
-                                  max_features=int(math.sqrt(len(FeatCols))),
+                                  max_features= int(math.sqrt(len(FeatCols))),
                                   verbose= True)
         self._model = gbr.fit(X,Y)
 
@@ -105,13 +120,6 @@ class GBR(ModelBase):
         """"""
         ValidData = self.ValidData
 
-        #ValidData['bathroomratio'] = ValidData['bathroomcnt'] / ValidData['calculatedbathnbr']
-        #ValidData.loc[ValidData['bathroomratio'] < 0, 'bathroomratio'] = -1
-        #
-        # ValidData['structuretaxvalueratio'] = ValidData['structuretaxvaluedollarcnt'] / ValidData['taxvaluedollarcnt']
-        # ValidData['landtaxvalueratio'] = ValidData['landtaxvaluedollarcnt'] / ValidData['taxvaluedollarcnt']
-        # ValidData.loc[ValidData['structuretaxvalueratio'] < 0, 'structuretaxvalueratio'] = -1
-        # ValidData.loc[ValidData['landtaxvalueratio'] < 0, 'landtaxvalueratio'] = -1
         ValidData['longitude'] -= -118600000
         ValidData['latitude'] -= 34220000
 
@@ -126,8 +134,8 @@ class GBR(ModelBase):
         for d in self._l_valid_predict_columns:
             l_valid_columns = ['%s%s' % (c, d) if (c in ['lastgap', 'monthyear', 'buildingage']) else c for c in self._l_train_columns]
             x_valid = ValidData[l_valid_columns]
-            x_valid = x_valid.values.astype(np.float32, copy=False)
-            pred_valid[d] = self._model.predict(x_valid)# * 0.85 + 0.011 * 0.15
+            #x_valid = x_valid.values.astype(np.float32, copy=False)
+            pred_valid[d] = self._model.predict(x_valid)
             df_tmp = ValidData[ValidData['transactiondate'].dt.month == int(d[-2:])]
             truth_valid.loc[df_tmp.index, d] = df_tmp['logerror']
 
@@ -149,9 +157,22 @@ class GBR(ModelBase):
 
     def submit(self):
         """"""
+        ## concate train with valid data
+        self.TrainData = pd.concat([self.TrainData, self.ValidData[self.TrainData.columns]],ignore_index=True)  ## ignore_index will reset the index or index will be overlaped
+
+        ## drop noisy columns
+        print('train data shape, ', self.TrainData.shape)
+        l_drop_cont = []
+        with open('%s/drop_selected.dat' % self.OutputDir, 'r') as i_file:
+            for line in i_file:
+                l_drop_cont.append(line.strip())
+        i_file.close()
+        self.TrainData.drop(l_drop_cont, axis=1, inplace=True)
+
         ## retrain with the whole training data
-        self.TrainData = self.TrainData[
-            (self.TrainData['logerror'] > self._low) & (self.TrainData['logerror'] < self._up)]
+        print('size before truncated outliers is %d ' % len(self.TrainData))
+        self.TrainData = self.TrainData[(self.TrainData['logerror'] > self._low) & (self.TrainData['logerror'] < self._up)]
+        print('size after truncated outliers is %d ' % len(self.TrainData))
 
         self.TrainData['longitude'] -= -118600000
         self.TrainData['latitude'] -= 34220000
@@ -159,15 +180,22 @@ class GBR(ModelBase):
         X = self.TrainData.drop(self._l_drop_cols, axis=1)
         Y = self.TrainData['logerror']
 
+        self._l_train_columns = X.columns
         FeatCols = list(self._l_train_columns)
+        print('train data shape after cleaned, ', self.TrainData.shape)
+
+        print('feature size %d' % len(self._l_train_columns))
 
         gbr = GradientBoostingRegressor(n_estimators= self._iter,
                                   learning_rate= self._learning_rate,
                                   max_depth = self._depth,
                                   random_state = 2017,
+                                  subsample= 0.80,
                                   loss = self._loss,
-                                  max_features=int(math.sqrt(len(FeatCols))),
+                                  max_features= int(math.sqrt(len(FeatCols))),
                                   verbose= True)
+        self._model = gbr.fit(X,Y)
+        print('training done.')
         del self.TrainData, X, Y
         gc.collect()
 
@@ -185,13 +213,12 @@ class GBR(ModelBase):
             s0 = time.time()
 
             print('Prediction for column %s ' % d)
-            l_test_columns = ['%s%s' % (c, d) if (c in ['lastgap', 'monthyear', 'buildingage']) else c for c in
-                              self._l_train_columns]
+            l_test_columns = ['%s%s' % (c, d) if (c in ['lastgap', 'monthyear', 'buildingage']) else c for c in self._l_train_columns]
             x_test = self.TestData[l_test_columns]
 
             for idx in range(0, len(x_test), N):
-                x_test_block = x_test[idx:idx + N]  # .values.astype(np.float32, copy=False)
-                ret = self._model.predict(x_test_block)  # * 0.93 + 0.012 * 0.07
+                x_test_block = x_test[idx:idx + N]
+                ret = self._model.predict(x_test_block)
                 self._sub.loc[x_test[idx:idx + N].index, d] = ret
                 print(np.mean(np.abs(ret)))
 

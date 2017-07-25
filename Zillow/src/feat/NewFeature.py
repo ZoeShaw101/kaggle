@@ -2,6 +2,9 @@ import datetime
 import pandas as pd
 import numpy as np
 import gc
+import numba
+import math
+import sys
 
 class NewFeature:
 
@@ -19,15 +22,80 @@ class NewFeature:
         data = cls.__MonthYear(data)
         print('monthyear was added')
 
-        ##
+        ## building age
         data = cls.__BuildingAge(data)
         print('buildingage was added')
 
-        ##
+        ## null count in a row
         data = cls.__NullCount(data)
         print('nullcount was added')
 
+        ## parse rawcensustractandblock
+        data = cls.__ParseCensustractandblock(data)
+        print('fips/tract/block were added')
+
         return data
+
+    @classmethod
+    def __ParseCensustractandblock(cls, data):
+        """"""
+        df_train, df_valid, df_test = data
+
+        ##
+        df_train['rawcensustractandblock'] = (df_train['rawcensustractandblock'] * 1000).astype(int)
+        df_train['tmp_census'] = df_train['rawcensustractandblock'] % 10000000
+        df_train['fipscode'] = (df_train['rawcensustractandblock'] / 10000000).astype(int).astype(str)
+        df_train['tractcode'] = (df_train['tmp_census'] / 10).astype(int).astype(str)
+        df_train['blockcode'] = (df_train['tmp_census'] % 10).astype(str)
+        df_train.drop('tmp_census', axis= 1, inplace= True)
+        ##
+        df_valid['rawcensustractandblock'] = (df_valid['rawcensustractandblock'] * 1000).astype(int)
+        df_valid['tmp_census'] = df_valid['rawcensustractandblock'] % 10000000
+        df_valid['fipscode'] = (df_valid['rawcensustractandblock'] / 10000000).astype(int).astype(str)
+        df_valid['tractcode'] = (df_valid['tmp_census'] / 10).astype(int).astype(str)
+        df_valid['blockcode'] = (df_valid['tmp_census'] % 10).astype(str)
+        df_valid.drop('tmp_census', axis= 1, inplace= True)
+
+        ##
+        # df_test['rawcensustractandblock'].fillna(-1)
+        # df_test['rawcensustractandblock'] = (df_test['rawcensustractandblock'] * 1000).astype(int)
+        # df_test['tmp_census'] = df_test['rawcensustractandblock'] % 10000000
+        # df_test['fipscode'] = (df_test['rawcensustractandblock'] / 10000000).astype(int).astype(str)
+        # df_test['blockcode'] = (df_test['tmp_census'] % 10).astype(str)
+        # df_test['tractcode'] = (df_test['tmp_census'] / 10).astype(int).astype(str)
+        # df_test.drop('tmp_census', axis= 1, inplace= True)
+        parsed = cls.__ApplyParse(df_test['rawcensustractandblock'], df_test['fips'])
+        df_parsed = pd.DataFrame(data= parsed, index= df_test.index, columns= ['fipscode', 'tractcode', 'blockcode'])
+        df_test = pd.concat([df_test, df_parsed], axis= 1)
+
+        df_train.drop('rawcensustractandblock', axis= 1, inplace= True)
+        df_valid.drop('rawcensustractandblock', axis= 1, inplace= True)
+        df_test.drop('rawcensustractandblock', axis= 1, inplace= True)
+
+        return df_train, df_valid, df_test
+
+    @classmethod
+    @numba.jit
+    def __ApplyParse(cls, ColumnValues1, ColumnValues2):
+        """"""
+        n = len(ColumnValues1)
+        result = np.zeros((n, 3), dtype= 'object')
+        for i in range(n):
+            v = ColumnValues1[i]
+            if(math.isnan(v)):
+                if(math.isnan(ColumnValues2[i])):
+                    result[i, 0] = str(-1)
+                else:
+                    result[i, 0] = str(int(ColumnValues2[i]))
+                result[i, 1] = str(-1)
+                result[i, 2] = str(-1)
+            else:
+                s = str(int(v * 1000))
+                result[i, 0] = s[:4]
+                result[i, 1] = s[4:10]
+                result[i, 2] = s[10:]
+
+        return result
 
     @classmethod
     def __NullCount(cls,data):

@@ -22,15 +22,39 @@ class XGB(ModelBase):
         'lambda': 0.8,
         'alpha': 0.3995,
         'eta': 0.04,
-        'max_depth': 10
+        'max_depth': 8
     }
+
+    _l_drop_select = {'tractcode': .99990,
+                     'regionidzip': .9995,
+                     'regionidneighborhood': .9995,
+                     'regionidcity': .9995,
+                     'propertylandusetypeid': .999,
+                     'heatingorsystemtypeid': .999,
+                     'buildingqualitytypeid': .999,
+                     'architecturalstyletypeid': .999,
+                     'airconditioningtypeid': .999,
+                     'blockcode': .999
+                     }
 
     _iter = 100
 
-    _l_drop_cols = ['logerror', 'parcelid', 'transactiondate','index','nullcount']
+    _l_drop_cols = ['logerror', 'parcelid', 'transactiondate','index']
 
     def train(self):
         """"""
+        ## drop noisy columns
+        print(self.TrainData.shape)
+
+        N = len(self.TrainData)
+
+        for sel in self._l_drop_select:
+            Cols = [col for col in self.TrainData.columns if (sel in col)]
+            selected = [col for col in Cols if (self.TrainData[col].value_counts().ix[0] > N * l_drop_select[sel])]
+            print('%s has %d' % (sel, len(Cols)))
+            print('%s was truncted %d' % (sel, len(selected)))
+            self.TrainData.drop(selected, axis= 1, inplace= True)
+
         start = time.time()
 
         print(len(self.TrainData))
@@ -39,11 +63,6 @@ class XGB(ModelBase):
 
         TrainData['longitude'] -= -118600000
         TrainData['latitude'] -= 34220000
-
-        # TrainData['structuretaxvalueratio'] = TrainData['structuretaxvaluedollarcnt'] / TrainData['taxvaluedollarcnt']
-        # TrainData['landtaxvalueratio'] = TrainData['landtaxvaluedollarcnt'] / TrainData['taxvaluedollarcnt']
-        # TrainData.loc[TrainData['structuretaxvalueratio'] < 0, 'structuretaxvalueratio'] = -1
-        # TrainData.loc[TrainData['landtaxvalueratio'] < 0, 'landtaxvalueratio'] = -1
 
         x_train = TrainData.drop(self._l_drop_cols, axis= 1)
         y_train = TrainData['logerror'].values.astype(np.float32)
@@ -102,10 +121,6 @@ class XGB(ModelBase):
 
         ValidData['longitude'] -= -118600000
         ValidData['latitude'] -= 34220000
-        # ValidData['structuretaxvalueratio'] = ValidData['structuretaxvaluedollarcnt'] / ValidData['taxvaluedollarcnt']
-        # ValidData['landtaxvalueratio'] = ValidData['landtaxvaluedollarcnt'] / ValidData['taxvaluedollarcnt']
-        # ValidData.loc[ValidData['structuretaxvalueratio'] < 0, 'structuretaxvalueratio'] = -1
-        # ValidData.loc[ValidData['landtaxvalueratio'] < 0, 'landtaxvalueratio'] = -1
 
         pred_valid = pd.DataFrame(index= ValidData.index)
         pred_valid['parcelid'] = ValidData['parcelid']
@@ -119,9 +134,8 @@ class XGB(ModelBase):
             l_valid_columns = ['%s%s' % (c, d) if (c in ['lastgap', 'monthyear', 'buildingage']) else c for c in self._l_train_columns]
             x_valid = ValidData[l_valid_columns]
             x_valid.columns = ['lastgap' if('lastgap' in col) else 'monthyear' if('monthyear' in col) else 'buildingage' if('buildingage' in col) else col for col in x_valid.columns]
-            #x_valid = x_valid.values.astype(np.float32, copy=False)
             dvalid = xgboost.DMatrix(x_valid)
-            pred_valid[d] = self._model.predict(dvalid)  # * 0.97 + 0.011 * 0.03
+            pred_valid[d] = self._model.predict(dvalid)
             df_tmp = ValidData[ValidData['transactiondate'].dt.month == int(d[-2:])]
             truth_valid.loc[df_tmp.index, d] = df_tmp['logerror']
 
@@ -144,9 +158,23 @@ class XGB(ModelBase):
     def submit(self):
         """"""
         start = time.time()
+        ## concate train with valid
+        print('train data shape before concated, ', self.TrainData.shape)
+        self.TrainData = pd.concat([self.TrainData,self.ValidData[self.TrainData.columns]],ignore_index= True) ## ignore_index will reset the index or index will be overlaped
+
+        ## drop noisy columns
+        print('train data shape after concated, ', self.TrainData.shape)
+        l_drop_cont = []
+        with open('%s/drop_selected.dat' % self.OutputDir, 'r') as i_file:
+            for line in i_file:
+                l_drop_cont.append(line.strip())
+        i_file.close()
+        self.TrainData.drop(l_drop_cont, axis= 1, inplace= True)
 
         ## retrain model
+        print('size before truncated outliers is %d ' % len(self.TrainData))
         self.TrainData = self.TrainData[(self.TrainData['logerror'] > self._low) & (self.TrainData['logerror'] < self._up)]
+        print('size after truncated outliers is %d ' % len(self.TrainData))
 
         self.TrainData['longitude'] -= -118600000
         self.TrainData['latitude'] -= 34220000
@@ -154,6 +182,11 @@ class XGB(ModelBase):
         X = self.TrainData.drop(self._l_drop_cols, axis=1)
         Y = self.TrainData['logerror'].values.astype(np.float32)
         self._params['base_score'] = np.mean(Y)
+
+        self._l_train_columns = X.columns
+        print('train data shape after cleaned, ', self.TrainData.shape)
+
+        print('feature size %d' % len(self._l_train_columns))
 
         dtrain = xgboost.DMatrix(X,Y)
 

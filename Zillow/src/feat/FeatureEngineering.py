@@ -44,8 +44,10 @@ class Preprocessing:
         msk = np.random.rand(len(df_tmp)) < 0.25
         self.ValidData = df_tmp[msk]
         self.TrainData = pd.concat([self.TrainData[self.TrainData['transactiondate'].dt.month <= 6],df_tmp[~msk]],ignore_index= True)
+        print('train length %d' % len(self.TrainData))
+        print('valid length %d' % len(self.ValidData))
         #self.TrainData = self.TrainData.reset_index(drop = True)
-        #self.TestData = self.TestData.sample(frac = 1.00)
+        #self.TestData = self.TestData.sample(frac = 0.01)
 
     ## launch one task
     def __LaunchTask(self,task):
